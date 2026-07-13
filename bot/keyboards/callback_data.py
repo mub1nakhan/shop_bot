@@ -43,3 +43,50 @@ class NavigateCallback(CallbackData, prefix="nav"):
 class OrderCallback(CallbackData, prefix="order"):
     """User wants to leave a contact request for a specific product."""
     product_id: int
+
+
+class AdminProductsPageCallback(CallbackData, prefix="apage"):
+    """Pagination within the admin's product list for one category."""
+    category_id: int
+    page: int
+
+
+# ---- Admin / owner panel (only reachable by ADMIN_IDS, see bot/filters.py) ----
+
+
+class AdminNavCallback(CallbackData, prefix="anav"):
+    """Admin panel navigation: menu / products / leads / new_product / stats."""
+    action: str
+
+
+class AdminCategoryCallback(CallbackData, prefix="acat"):
+    """Admin browsing existing products inside a (leaf) category."""
+    category_id: int
+
+
+class AdminProductCallback(CallbackData, prefix="aprod"):
+    """Admin opened a specific product's detail/edit card."""
+    category_id: int
+    product_id: int
+
+
+class AdminToggleActiveCallback(CallbackData, prefix="atgl"):
+    """Admin toggled a product's is_active flag."""
+    category_id: int
+    product_id: int
+
+
+class AdminEditPriceCallback(CallbackData, prefix="apri"):
+    """Admin wants to change a product's price."""
+    category_id: int
+    product_id: int
+
+
+class AdminNewProductCatCallback(CallbackData, prefix="anpc"):
+    """Admin picked a category while creating a brand new product."""
+    category_id: int
+
+
+class AdminLeadDoneCallback(CallbackData, prefix="adon"):
+    """Admin marked a Lead (order/request) as processed."""
+    lead_id: int

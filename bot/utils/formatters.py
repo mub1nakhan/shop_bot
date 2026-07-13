@@ -17,6 +17,30 @@ def format_products_prompt(subcategory_name: str) -> str:
     return f"🧾 <b>{subcategory_name}</b>\n\nMahsulotni tanlang:"
 
 
+def format_numbered_products(products, start_index: int = 0) -> str:
+    """Renders a numbered list like:
+        1. Nomi — 150 000 UZS
+        2. Nomi — 200 000 UZS
+    `start_index` lets a page start numbering from where the previous page
+    left off; pass 0 to always restart each page at 1 (current behaviour).
+    """
+    lines = [
+        f"{start_index + i + 1}. {p.name} — {p.formatted_price}"
+        for i, p in enumerate(products)
+    ]
+    return "\n".join(lines)
+
+
+def format_numbered_admin_products(products, start_index: int = 0) -> str:
+    """Same as format_numbered_products but with the 🟢/🔴 active-status icon,
+    since the admin needs to see at a glance what's live in the bot."""
+    lines = []
+    for i, p in enumerate(products):
+        icon = "🟢" if p.is_active else "🔴"
+        lines.append(f"{start_index + i + 1}. {icon} {p.name} — {p.formatted_price}")
+    return "\n".join(lines)
+
+
 def format_main_menu_prompt(welcome_text: str) -> str:
     return f"{welcome_text}\n\nKategoriyani tanlang 👇"
 

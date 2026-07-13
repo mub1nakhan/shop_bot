@@ -33,9 +33,10 @@ from bot.keyboards.callback_data import (
     AdminNavCallback,
     AdminNewProductCatCallback,
     AdminProductCallback,
+    AdminProductsPageCallback,
     AdminToggleActiveCallback,
 )
-from bot.services.admin_service import (
+from bot.services.admin_services import (
     add_product_image_from_bytes,
     create_product,
     get_leaf_categories,
@@ -51,9 +52,12 @@ from bot.utils.formatters import (
     format_admin_menu_prompt,
     format_admin_product_detail,
     format_lead_line,
+    format_numbered_admin_products,
     format_stats,
 )
 from bot.utils.messaging import safe_edit_or_send
+from bot.utils.pagination import paginate
+from django.conf import settings
 
 router = Router(name="admin")
 router.message.filter(IsAdmin())
@@ -157,20 +161,35 @@ async def cb_admin_nav(
 # ------------------------------------------------------- browse products ----
 
 
-@router.callback_query(AdminCategoryCallback.filter())
-async def cb_admin_category(callback: CallbackQuery, callback_data: AdminCategoryCallback):
-    products = await get_products_in_category(callback_data.category_id)
+async def _render_admin_products(callback: CallbackQuery, category_id: int, page_number: int):
+    products = await get_products_in_category(category_id)
     if not products:
         await safe_edit_or_send(
             callback, "Bu kategoriyada hali mahsulot yo'q.", admin_menu_keyboard()
         )
-    else:
-        await safe_edit_or_send(
-            callback,
-            "📦 Mahsulotni tanlang:",
-            admin_products_keyboard(products, callback_data.category_id),
-        )
+        await callback.answer()
+        return
+
+    page = paginate(products, page_number, settings.ADMIN_PRODUCTS_PAGE_SIZE)
+    text = "📦 Mahsulotni tanlang:\n\n" + format_numbered_admin_products(page.items)
+    await safe_edit_or_send(
+        callback,
+        text,
+        admin_products_keyboard(page, category_id),
+    )
     await callback.answer()
+
+
+@router.callback_query(AdminCategoryCallback.filter())
+async def cb_admin_category(callback: CallbackQuery, callback_data: AdminCategoryCallback):
+    await _render_admin_products(callback, callback_data.category_id, page_number=0)
+
+
+@router.callback_query(AdminProductsPageCallback.filter())
+async def cb_admin_products_page(
+    callback: CallbackQuery, callback_data: AdminProductsPageCallback
+):
+    await _render_admin_products(callback, callback_data.category_id, callback_data.page)
 
 
 @router.callback_query(AdminProductCallback.filter())
