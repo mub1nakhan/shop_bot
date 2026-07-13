@@ -1,6 +1,8 @@
+import traceback
+
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, FSInputFile
+from aiogram.types import CallbackQuery, FSInputFile, InputMediaPhoto
 
 from bot.keyboards.callback_data import (
     CategoryCallback,
@@ -16,6 +18,7 @@ from bot.utils.formatters import format_category_prompt, format_product_caption,
 from bot.utils.messaging import safe_edit_or_send
 from bot.utils.pagination import paginate
 from django.conf import settings
+
 router = Router(name="catalog")
 
 
@@ -109,21 +112,31 @@ async def cb_product_selected(callback: CallbackQuery, callback_data: ProductCal
     )
     keyboard = product_detail_keyboard(product, callback_data.subcategory_id)
 
-    main_image = product.main_image
-    # The product card is a NEW message with a photo (can't "edit" a text
-    # message into a photo message reliably) — delete the old list message
-    # to keep the chat clean, then send the product card.
+    # The product card is a NEW message (can't "edit" a text message into a
+    # photo/album message reliably) — delete the old list message first.
     try:
         await callback.message.delete()
     except TelegramBadRequest:
         pass
 
-    if main_image and main_image.image:
-        await callback.message.answer_photo(
-            photo=FSInputFile(main_image.image.path),
-            caption=caption,
-            reply_markup=keyboard,
-        )
+    images = list(product.images.all())
+    # Asosiy rasm bo'lsa birinchi o'ringa qo'yamiz, keyin order bo'yicha.
+    images.sort(key=lambda img: (not img.is_main, img.order))
+
+    if images:
+        media = [
+            InputMediaPhoto(
+                media=FSInputFile(img.image.path),
+                caption=caption if i == 0 else None,
+            )
+            for i, img in enumerate(images[:10])  # Telegram albomda max 10 ta rasm
+        ]
+        try:
+            await callback.message.answer_media_group(media=media)
+        except Exception:
+            traceback.print_exc()
+            await callback.message.answer(caption)
+        await callback.message.answer("👇", reply_markup=keyboard)
     else:
         await callback.message.answer(caption, reply_markup=keyboard)
 
