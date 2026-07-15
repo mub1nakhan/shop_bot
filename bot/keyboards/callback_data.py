@@ -90,3 +90,13 @@ class AdminNewProductCatCallback(CallbackData, prefix="anpc"):
 class AdminLeadDoneCallback(CallbackData, prefix="adon"):
     """Admin marked a Lead (order/request) as processed."""
     lead_id: int
+
+
+class AdminLeadCallback(CallbackData, prefix="alead"):
+    """Admin opened a specific lead's full detail (client + product info)."""
+    lead_id: int
+
+
+class AdminLeadsPageCallback(CallbackData, prefix="alpage"):
+    """Pagination within the admin's leads (orders) list."""
+    page: int

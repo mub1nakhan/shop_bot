@@ -90,11 +90,23 @@ def add_product_image_from_bytes(
 
 
 @sync_to_async
-def get_unprocessed_leads(limit: int = 10) -> list[Lead]:
+def get_unprocessed_leads(limit: int = 200) -> list[Lead]:
     return list(
         Lead.objects.filter(is_processed=False)
         .select_related("user", "product")
         .order_by("created_at")[:limit]
+    )
+
+
+@sync_to_async
+def get_lead_for_admin(lead_id: int) -> Lead | None:
+    """Full lead detail: client (TelegramUser) + product + product images,
+    all prefetched so the admin sees everything without extra queries."""
+    return (
+        Lead.objects.filter(pk=lead_id)
+        .select_related("user", "product", "product__category")
+        .prefetch_related("product__images")
+        .first()
     )
 
 

@@ -6,12 +6,16 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from bot.keyboards.callback_data import (
     AdminCategoryCallback,
     AdminEditPriceCallback,
+    AdminLeadCallback,
     AdminLeadDoneCallback,
+    AdminLeadsPageCallback,
     AdminNavCallback,
     AdminNewProductCatCallback,
     AdminProductCallback,
+    AdminProductsPageCallback,
     AdminToggleActiveCallback,
 )
+from bot.utils.pagination import Page
 from catalog.models import Category, Product
 from users.models import Lead
 
@@ -50,15 +54,45 @@ def admin_new_product_categories_keyboard(categories: list[Category]):
     return builder.as_markup()
 
 
-def admin_products_keyboard(products: list[Product], category_id: int):
+def admin_products_keyboard(page: Page, category_id: int):
+    """Numbered grid (1, 2, 3 ...) that lines up with the numbered text list
+    built by format_numbered_admin_products — tapping "3" opens the 3rd
+    product's admin detail/edit card."""
     builder = InlineKeyboardBuilder()
-    for p in products:
-        status_icon = "🟢" if p.is_active else "🔴"
+    for i, p in enumerate(page.items):
         builder.button(
-            text=f"{status_icon} {p.name} — {p.formatted_price}",
+            text=str(i + 1),
             callback_data=AdminProductCallback(category_id=category_id, product_id=p.pk),
         )
-    builder.adjust(1)
+    builder.adjust(5)
+
+    if page.total_pages > 1:
+        nav_buttons = []
+        if page.has_prev:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="⬅️",
+                    callback_data=AdminProductsPageCallback(
+                        category_id=category_id, page=page.page - 1
+                    ).pack(),
+                )
+            )
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text=f"{page.page + 1}/{page.total_pages}", callback_data="noop"
+            )
+        )
+        if page.has_next:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="➡️",
+                    callback_data=AdminProductsPageCallback(
+                        category_id=category_id, page=page.page + 1
+                    ).pack(),
+                )
+            )
+        builder.row(*nav_buttons)
+
     builder.row(
         InlineKeyboardButton(
             text="⬅️ Kategoriyalar",
@@ -98,16 +132,57 @@ def admin_product_detail_keyboard(product: Product, category_id: int):
     return builder.as_markup()
 
 
-def admin_leads_keyboard(leads: list[Lead]):
+def admin_leads_keyboard(page: Page):
+    """Numbered grid (1, 2, 3 ...) lining up with format_numbered_leads —
+    tapping a number opens that lead's full detail card."""
     builder = InlineKeyboardBuilder()
-    for lead in leads:
+    for i, lead in enumerate(page.items):
+        builder.button(text=str(i + 1), callback_data=AdminLeadCallback(lead_id=lead.pk))
+    builder.adjust(5)
+
+    if page.total_pages > 1:
+        nav_buttons = []
+        if page.has_prev:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="⬅️",
+                    callback_data=AdminLeadsPageCallback(page=page.page - 1).pack(),
+                )
+            )
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text=f"{page.page + 1}/{page.total_pages}", callback_data="noop"
+            )
+        )
+        if page.has_next:
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="➡️",
+                    callback_data=AdminLeadsPageCallback(page=page.page + 1).pack(),
+                )
+            )
+        builder.row(*nav_buttons)
+
+    builder.row(BACK_TO_ADMIN_MENU)
+    return builder.as_markup()
+
+
+def admin_lead_detail_keyboard(lead: Lead):
+    builder = InlineKeyboardBuilder()
+    if not lead.is_processed:
         builder.row(
             InlineKeyboardButton(
-                text=f"✅ #{lead.pk} — bajarildi deb belgilash",
+                text="✅ Bajarildi deb belgilash",
                 callback_data=AdminLeadDoneCallback(lead_id=lead.pk).pack(),
             )
         )
-    builder.row(BACK_TO_ADMIN_MENU)
+    builder.row(
+        InlineKeyboardButton(
+            text="⬅️ Buyurtmalar",
+            callback_data=AdminNavCallback(action="leads").pack(),
+        ),
+        BACK_TO_ADMIN_MENU,
+    )
     return builder.as_markup()
 
 

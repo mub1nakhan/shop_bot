@@ -11,15 +11,17 @@ mismatch bug) -- everything here is guided, narrow, and hard to misuse.
 from decimal import Decimal, InvalidOperation
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, FSInputFile, Message
 
 from bot.filters import IsAdmin
 from bot.keyboards.admin_inline import (
     admin_cancel_keyboard,
     admin_categories_keyboard,
+    admin_lead_detail_keyboard,
     admin_leads_keyboard,
     admin_menu_keyboard,
     admin_new_product_categories_keyboard,
@@ -29,7 +31,9 @@ from bot.keyboards.admin_inline import (
 from bot.keyboards.callback_data import (
     AdminCategoryCallback,
     AdminEditPriceCallback,
+    AdminLeadCallback,
     AdminLeadDoneCallback,
+    AdminLeadsPageCallback,
     AdminNavCallback,
     AdminNewProductCatCallback,
     AdminProductCallback,
@@ -40,6 +44,7 @@ from bot.services.admin_services import (
     add_product_image_from_bytes,
     create_product,
     get_leaf_categories,
+    get_lead_for_admin,
     get_product_for_admin,
     get_products_in_category,
     get_stats,
@@ -51,8 +56,9 @@ from bot.services.admin_services import (
 from bot.utils.formatters import (
     format_admin_menu_prompt,
     format_admin_product_detail,
-    format_lead_line,
+    format_lead_detail,
     format_numbered_admin_products,
+    format_numbered_leads,
     format_stats,
 )
 from bot.utils.messaging import safe_edit_or_send
@@ -121,16 +127,7 @@ async def cb_admin_nav(
 
     elif action == "leads":
         await state.clear()
-        leads = await get_unprocessed_leads()
-        if not leads:
-            await safe_edit_or_send(
-                callback, "🛒 Hozircha yangi buyurtmalar yo'q.", admin_menu_keyboard()
-            )
-        else:
-            text = "🛒 <b>Yangi buyurtmalar:</b>\n\n" + "\n\n".join(
-                f"#{lead.pk}\n{format_lead_line(lead)}" for lead in leads
-            )
-            await safe_edit_or_send(callback, text, admin_leads_keyboard(leads))
+        await _render_admin_leads(callback, page_number=0)
 
     elif action == "new_product":
         categories = await get_leaf_categories()
@@ -268,6 +265,54 @@ async def process_new_price(message: Message, state: FSMContext):
 # -------------------------------------------------------------- leads ----
 
 
+async def _render_admin_leads(callback: CallbackQuery, page_number: int):
+    leads = await get_unprocessed_leads()
+    if not leads:
+        await safe_edit_or_send(
+            callback, "🛒 Hozircha yangi buyurtmalar yo'q.", admin_menu_keyboard()
+        )
+        return
+
+    page = paginate(leads, page_number, settings.ADMIN_PRODUCTS_PAGE_SIZE)
+    text = "🛒 <b>Yangi buyurtmalar:</b>\n\n" + format_numbered_leads(page.items)
+    await safe_edit_or_send(callback, text, admin_leads_keyboard(page))
+
+
+@router.callback_query(AdminLeadsPageCallback.filter())
+async def cb_admin_leads_page(callback: CallbackQuery, callback_data: AdminLeadsPageCallback):
+    await _render_admin_leads(callback, callback_data.page)
+    await callback.answer()
+
+
+@router.callback_query(AdminLeadCallback.filter())
+async def cb_admin_lead(callback: CallbackQuery, callback_data: AdminLeadCallback):
+    """Full detail card: everything about the client and the product they
+    asked about, so the admin doesn't need to guess or dig for more info
+    before calling the client back."""
+    lead = await get_lead_for_admin(callback_data.lead_id)
+    if lead is None:
+        await callback.answer("Buyurtma topilmadi.", show_alert=True)
+        return
+
+    text = format_lead_detail(lead)
+    keyboard = admin_lead_detail_keyboard(lead)
+    main_image = lead.product.main_image if lead.product else None
+
+    if main_image:
+        # A photo message can't be turned into by editing text -> delete + resend.
+        try:
+            await callback.message.delete()
+        except TelegramBadRequest:
+            pass
+        await callback.message.answer_photo(
+            FSInputFile(main_image.image.path), caption=text, reply_markup=keyboard
+        )
+    else:
+        await safe_edit_or_send(callback, text, keyboard)
+
+    await callback.answer()
+
+
 @router.callback_query(AdminLeadDoneCallback.filter())
 async def cb_admin_lead_done(callback: CallbackQuery, callback_data: AdminLeadDoneCallback):
     lead = await mark_lead_done(callback_data.lead_id)
@@ -275,16 +320,20 @@ async def cb_admin_lead_done(callback: CallbackQuery, callback_data: AdminLeadDo
         await callback.answer("Topilmadi.", show_alert=True)
         return
 
-    leads = await get_unprocessed_leads()
-    if not leads:
-        await safe_edit_or_send(
-            callback, "🛒 Hozircha yangi buyurtmalar yo'q.", admin_menu_keyboard()
-        )
-    else:
-        text = "🛒 <b>Yangi buyurtmalar:</b>\n\n" + "\n\n".join(
-            f"#{l.pk}\n{format_lead_line(l)}" for l in leads
-        )
-        await safe_edit_or_send(callback, text, admin_leads_keyboard(leads))
+    lead = await get_lead_for_admin(lead.pk)  # refresh with prefetch + updated status
+    text = format_lead_detail(lead)
+    keyboard = admin_lead_detail_keyboard(lead)
+
+    # This message might be a photo (caption) or a plain text message,
+    # depending on whether the product had an image -- handle both.
+    try:
+        await callback.message.edit_caption(caption=text, reply_markup=keyboard)
+    except TelegramBadRequest:
+        try:
+            await callback.message.edit_text(text, reply_markup=keyboard)
+        except TelegramBadRequest:
+            await callback.message.answer(text, reply_markup=keyboard)
+
     await callback.answer("Bajarildi deb belgilandi ✅")
 
 

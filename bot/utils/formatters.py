@@ -71,6 +71,54 @@ def format_lead_line(lead) -> str:
     return f"👤 {user_name}\n📦 {product_name}\n📞 {lead.phone_number}"
 
 
+def format_numbered_leads(leads, start_index: int = 0) -> str:
+    """Numbered summary list, one line per lead: '1. Ism — Mahsulot nomi'."""
+    lines = []
+    for i, lead in enumerate(leads):
+        user = lead.user
+        user_name = user.full_name or user.username or str(user.telegram_id)
+        product_name = lead.product.name if lead.product else "—"
+        lines.append(f"{start_index + i + 1}. {user_name} — {product_name}")
+    return "\n".join(lines)
+
+
+def format_lead_detail(lead) -> str:
+    """Full detail card: everything known about the client and about the
+    product they're asking about, so the admin never has to guess or dig
+    for more info before calling the client back."""
+    user = lead.user
+    username = f"@{user.username}" if user.username else "—"
+
+    lines = [
+        "🛒 <b>Buyurtma tafsilotlari</b>",
+        "",
+        "👤 <b>Mijoz:</b>",
+        f"Ism: {user.full_name or '—'}",
+        f"Username: {username}",
+        f"Telegram ID: <code>{user.telegram_id}</code>",
+        f"📞 Bog'lanish raqami: {lead.phone_number}",
+        "",
+    ]
+
+    product = lead.product
+    if product is not None:
+        lines.append("📦 <b>Mahsulot:</b>")
+        lines.append(f"Nomi: {product.name}")
+        lines.append(f"Narxi: {product.formatted_price}")
+        lines.append(f"Kategoriya: {product.category.name}")
+        if product.short_description:
+            lines.append(f"Tavsif: {product.short_description}")
+    else:
+        lines.append("📦 Mahsulot: — (bu mahsulot o'chirilgan)")
+
+    lines += [
+        "",
+        f"🕒 Buyurtma vaqti: {lead.created_at.strftime('%d.%m.%Y %H:%M')}",
+        f"Holati: {'✅ Bajarilgan' if lead.is_processed else '🕓 Kutilmoqda'}",
+    ]
+    return "\n".join(lines)
+
+
 def format_stats(stats: dict) -> str:
     return (
         "📊 <b>Statistika</b>\n\n"
